@@ -1,3 +1,94 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+return function(Modulos)
+    local TixSettings = Modulos.Config.Settings
+    local Circle = Modulos.AimbotCircle
+
+    local friendCache = {}
+    local function isFriend(player)
+        if friendCache[player.UserId] ~= nil then return friendCache[player.UserId] end
+        friendCache[player.UserId] = false
+        task.spawn(function()
+            local success, result = pcall(function() return LocalPlayer:IsFriendsWith(player.UserId) end)
+            if success then friendCache[player.UserId] = result end
+        end)
+        return friendCache[player.UserId]
+    end
+
+    -- Loop de Alinhamento da Mira com Humanização Corrigida
+    RunService.RenderStepped:Connect(function()
+        if not TixSettings.Sticky then return end
+        
+        local maisProximo = nil
+        local menorDistanciaMouse = TixSettings.FOV
+        local mousePos = game:GetService("UserInputService"):GetMouseLocation()
+
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild(TixSettings.TargetPart) and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                
+                if TixSettings.TeamCheck and p.Team == LocalPlayer.Team then continue end
+                if TixSettings.FriendCheck and isFriend(p) then continue end
+                
+                local part = p.Character[TixSettings.TargetPart]
+                local telaPos, visivel = Camera:WorldToViewportPoint(part.Position)
+                
+                if visivel then
+                    if TixSettings.WallCheck then
+                        local raio = Ray.new(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000)
+                        local ig = {LocalPlayer.Character, p.Character}
+                        local hit = workspace:FindPartOnRayWithIgnoreList(raio, ig)
+                        if hit then continue end
+                    end
+                    
+                    local dist2D = (Vector2.new(telaPos.X, telaPos.Y) - mousePos).Magnitude
+                    if dist2D < menorDistanciaMouse then
+                        menorDistanciaMouse = dist2D
+                        maisProximo = part
+                    end
+                end
+            end
+        end
+
+        if maisProximo then
+            local pAlvo, _ = Camera:WorldToViewportPoint(maisProximo.Position)
+            local alvo2D = Vector2.new(pAlvo.X, pAlvo.Y)
+            local suavidadeFinal = TixSettings.Smoothness
+
+            -- RESOLUÇÃO DA HUMANIZAÇÃO: 
+            -- Quanto mais longe o alvo está no espaço 3D, mais trêmula/lenta a mira age simular o erro humano.
+            if TixSettings.Humanized then
+                local dist3D = (maisProximo.Position - Camera.CFrame.Position).Magnitude
+                local fatorDistancia = math.clamp(dist3D / 50, 1, 5)
+                suavidadeFinal = suavidadeFinal * fatorDistancia
+            end
+
+            -- Aplica a movimentação suave na câmera
+            local diff = (alvo2D - mousePos) / suavidadeFinal
+            Camera.CFrame = Camera.CFrame * CFrame.Angles(0, math.rad(-diff.X * 0.1), 0) * CFrame.Angles(math.rad(-diff.Y * 0.1), 0, 0)
+        end
+    end)
+
+    -- Threads do Otimizador e Limpeza Básica
+    task.spawn(function()
+        while task.wait(2) do
+            if TixSettings.Optimizer then
+                pcall(function()
+                    game:GetService("Lighting").GlobalShadows = false
+                    for _, v in pairs(workspace:GetDescendants()) do
+                        if v:IsA("Part") or v:IsA("MeshPart") then
+                            v.Material = Enum.Material.Plastic; v.Reflectance = 0
+                        elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1
+                        end
+                    end
+                end)
+            end
+        end
+    end)
+end
+
 local TixSettings = {
     Sticky = false,
     WallCheck = true,
@@ -232,95 +323,4 @@ return function(Modulos)
     AddSlider("Tamanho do FOV", "FOV", 10, 600, 150)
     AddSlider("Suavidade (Smoothness)", "Smoothness", 1, 50, 1)
     AddSlider("Velocidade do 360", "SpinSpeed", 5, 30, 15)
-end
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
-return function(Modulos)
-    local TixSettings = Modulos.Config.Settings
-    local Circle = Modulos.AimbotCircle
-
-    local friendCache = {}
-    local function isFriend(player)
-        if friendCache[player.UserId] ~= nil then return friendCache[player.UserId] end
-        friendCache[player.UserId] = false
-        task.spawn(function()
-            local success, result = pcall(function() return LocalPlayer:IsFriendsWith(player.UserId) end)
-            if success then friendCache[player.UserId] = result end
-        end)
-        return friendCache[player.UserId]
-    end
-
-    -- Loop de Alinhamento da Mira com Humanização Corrigida
-    RunService.RenderStepped:Connect(function()
-        if not TixSettings.Sticky then return end
-        
-        local maisProximo = nil
-        local menorDistanciaMouse = TixSettings.FOV
-        local mousePos = game:GetService("UserInputService"):GetMouseLocation()
-
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild(TixSettings.TargetPart) and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-                
-                if TixSettings.TeamCheck and p.Team == LocalPlayer.Team then continue end
-                if TixSettings.FriendCheck and isFriend(p) then continue end
-                
-                local part = p.Character[TixSettings.TargetPart]
-                local telaPos, visivel = Camera:WorldToViewportPoint(part.Position)
-                
-                if visivel then
-                    if TixSettings.WallCheck then
-                        local raio = Ray.new(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000)
-                        local ig = {LocalPlayer.Character, p.Character}
-                        local hit = workspace:FindPartOnRayWithIgnoreList(raio, ig)
-                        if hit then continue end
-                    end
-                    
-                    local dist2D = (Vector2.new(telaPos.X, telaPos.Y) - mousePos).Magnitude
-                    if dist2D < menorDistanciaMouse then
-                        menorDistanciaMouse = dist2D
-                        maisProximo = part
-                    end
-                end
-            end
-        end
-
-        if maisProximo then
-            local pAlvo, _ = Camera:WorldToViewportPoint(maisProximo.Position)
-            local alvo2D = Vector2.new(pAlvo.X, pAlvo.Y)
-            local suavidadeFinal = TixSettings.Smoothness
-
-            -- RESOLUÇÃO DA HUMANIZAÇÃO: 
-            -- Quanto mais longe o alvo está no espaço 3D, mais trêmula/lenta a mira age simular o erro humano.
-            if TixSettings.Humanized then
-                local dist3D = (maisProximo.Position - Camera.CFrame.Position).Magnitude
-                local fatorDistancia = math.clamp(dist3D / 50, 1, 5)
-                suavidadeFinal = suavidadeFinal * fatorDistancia
-            end
-
-            -- Aplica a movimentação suave na câmera
-            local diff = (alvo2D - mousePos) / suavidadeFinal
-            Camera.CFrame = Camera.CFrame * CFrame.Angles(0, math.rad(-diff.X * 0.1), 0) * CFrame.Angles(math.rad(-diff.Y * 0.1), 0, 0)
-        end
-    end)
-
-    -- Threads do Otimizador e Limpeza Básica
-    task.spawn(function()
-        while task.wait(2) do
-            if TixSettings.Optimizer then
-                pcall(function()
-                    game:GetService("Lighting").GlobalShadows = false
-                    for _, v in pairs(workspace:GetDescendants()) do
-                        if v:IsA("Part") or v:IsA("MeshPart") then
-                            v.Material = Enum.Material.Plastic; v.Reflectance = 0
-                        elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1
-                        end
-                    end
-                end)
-            end
-        end
-    end)
 end
