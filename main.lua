@@ -20,8 +20,8 @@ local TixSettings = {
     Auto360 = false,        
     SpinSpeed = 15,
     TargetPart = "Head",
-    HitboxExpander = false,
-    HitboxSize = 1.2,  -- multiplicador: 1.2 = +20%, 1.5 = +50%
+    Humanized = false,   -- Nova Opção
+    Streamproof = false  -- Nova Opção
 }
 
 -- REDZ THEME COLORS
@@ -66,78 +66,7 @@ local BoneStructure = {
     }
 }
 
--- Hitbox Expander
-local hitboxOriginalSizes = {}  -- [part] = originalSize
-local hitboxActive = false
-
-local HitboxPartNames = {
-    R15 = {"Head", "UpperTorso", "LowerTorso",
-            "LeftUpperArm", "LeftLowerArm", "LeftHand",
-            "RightUpperArm", "RightLowerArm", "RightHand",
-            "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
-            "RightUpperLeg", "RightLowerLeg", "RightFoot"},
-    R6  = {"Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg"}
-}
-
-local function applyHitbox(char, multiplier)
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    local rigType = (hum.RigType == Enum.HumanoidRigType.R15) and "R15" or "R6"
-    for _, partName in ipairs(HitboxPartNames[rigType]) do
-        local part = char:FindFirstChild(partName)
-        if part and part:IsA("BasePart") then
-            if not hitboxOriginalSizes[part] then
-                hitboxOriginalSizes[part] = part.Size
-            end
-            part.Size = hitboxOriginalSizes[part] * multiplier
-            part.Transparency = part.Transparency  -- força atualização
-        end
-    end
-end
-
-local function revertHitbox(char)
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    local rigType = (hum.RigType == Enum.HumanoidRigType.R15) and "R15" or "R6"
-    for _, partName in ipairs(HitboxPartNames[rigType]) do
-        local part = char:FindFirstChild(partName)
-        if part and hitboxOriginalSizes[part] then
-            part.Size = hitboxOriginalSizes[part]
-            hitboxOriginalSizes[part] = nil
-        end
-    end
-end
-
-local function setHitboxAll(active)
-    hitboxActive = active
-    TixSettings.HitboxExpander = active
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            if active then
-                applyHitbox(p.Character, TixSettings.HitboxSize)
-            else
-                revertHitbox(p.Character)
-            end
-        end
-    end
-end
-
--- Reaplica hitbox quando novos personagens entram
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function(char)
-        task.wait(1)
-        if hitboxActive then applyHitbox(char, TixSettings.HitboxSize) end
-    end)
-end)
-for _, p in pairs(Players:GetPlayers()) do
-    if p ~= LocalPlayer then
-        p.CharacterAdded:Connect(function(char)
-            task.wait(1)
-            if hitboxActive then applyHitbox(char, TixSettings.HitboxSize) end
-        end)
-    end
-end
-
+-- UI Setup
 local TixUI = Instance.new("ScreenGui")
 TixUI.Name = "REDZ_XITER_V2"
 TixUI.Parent = gethui and gethui() or game:GetService("CoreGui")
@@ -320,10 +249,12 @@ end
 
 local indicators = {
     Sticky = AddToggle("Sticky Aim", "Sticky"),
+    Humanized = AddToggle("Simulacao Humana", "Humanized"), -- Botão Novo
     Walls = AddToggle("Wall Check", "WallCheck"),
     Teams = AddToggle("Team Check", "TeamCheck"),
     Friends = AddToggle("Friend Check", "FriendCheck"),
     ESP = AddToggle("Visual ESP + Skeleton", "ESP"),
+    Streamproof = AddToggle("Modo Antigravacao", "Streamproof"), -- Botão Novo
     Trickshot = AddToggle("Auto 360 On Jump", "Auto360"), 
     Trigger = AddToggle("Trigger Bot", "Triggerbot"),
     Optimizer = AddToggle("FPS Otimizador", "Optimizer"),
@@ -332,114 +263,8 @@ local indicators = {
 
 AddSelector("Puxar Em (Target)", "TargetPart", {"Head", "Torso", "HumanoidRootPart"})
 AddSlider("Tamanho do FOV", "FOV", 10, 600, 150)
-AddSlider("Suavidade (Smoothness)", "Smoothness", 1, 200, 1)
+AddSlider("Suavidade (Smoothness)", "Smoothness", 1, 50, 1)
 AddSlider("Velocidade do 360", "SpinSpeed", 5, 30, 15)
-
--- ── HITBOX EXPANDER WIDGET ──────────────────────────────────
-do
-    -- Tamanhos disponíveis (label → multiplicador)
-    local HitboxOptions = {
-        {label = "+20%  (Legit)",   mult = 1.2},
-        {label = "+30%  (Medio)",   mult = 1.3},
-        {label = "+40%  (Agressivo)", mult = 1.4},
-        {label = "+50%  (Maximo)",  mult = 1.5},
-    }
-    local selectedIndex = 1  -- default +20%
-    TixSettings.HitboxSize = HitboxOptions[selectedIndex].mult
-
-    -- Container externo
-    local hbContainer = Instance.new("Frame", Scroll)
-    hbContainer.Size = UDim2.new(1, -5, 0, 110)
-    hbContainer.BackgroundColor3 = RedzCardBg
-    hbContainer.Name = "HitboxExpanderWidget"
-    Instance.new("UICorner", hbContainer)
-    local hbStroke = Instance.new("UIStroke", hbContainer)
-    hbStroke.Thickness = 1; hbStroke.Color = RedzPrimary; hbStroke.Transparency = 0.8
-
-    -- Título
-    local hbTitle = Instance.new("TextLabel", hbContainer)
-    hbTitle.Size = UDim2.new(1, -15, 0, 22)
-    hbTitle.Position = UDim2.new(0, 15, 0, 6)
-    hbTitle.BackgroundTransparency = 1
-    hbTitle.Text = "Hitbox Expander"
-    hbTitle.Font = Enum.Font.GothamBold
-    hbTitle.TextColor3 = RedzPrimary
-    hbTitle.TextSize = 14
-    hbTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-    -- Dropdown (cicla as opções)
-    local hbDropdown = Instance.new("TextButton", hbContainer)
-    hbDropdown.Size = UDim2.new(1, -15, 0, 28)
-    hbDropdown.Position = UDim2.new(0, 8, 0, 32)
-    hbDropdown.BackgroundColor3 = Color3.fromRGB(35, 8, 8)
-    hbDropdown.AutoButtonColor = false
-    hbDropdown.Text = ""
-    Instance.new("UICorner", hbDropdown)
-    local ddStroke = Instance.new("UIStroke", hbDropdown)
-    ddStroke.Thickness = 1; ddStroke.Color = RedzPrimary; ddStroke.Transparency = 0.6
-
-    local hbDropLabel = Instance.new("TextLabel", hbDropdown)
-    hbDropLabel.Size = UDim2.new(1, -30, 1, 0)
-    hbDropLabel.Position = UDim2.new(0, 10, 0, 0)
-    hbDropLabel.BackgroundTransparency = 1
-    hbDropLabel.Text = HitboxOptions[selectedIndex].label
-    hbDropLabel.Font = Enum.Font.GothamBold
-    hbDropLabel.TextColor3 = RedzPrimary
-    hbDropLabel.TextSize = 13
-    hbDropLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local hbArrow = Instance.new("TextLabel", hbDropdown)
-    hbArrow.Size = UDim2.new(0, 20, 1, 0)
-    hbArrow.Position = UDim2.new(1, -25, 0, 0)
-    hbArrow.BackgroundTransparency = 1
-    hbArrow.Text = "▾"
-    hbArrow.Font = Enum.Font.GothamBold
-    hbArrow.TextColor3 = RedzPrimary
-    hbArrow.TextSize = 14
-
-    hbDropdown.MouseButton1Click:Connect(function()
-        selectedIndex = selectedIndex % #HitboxOptions + 1
-        local opt = HitboxOptions[selectedIndex]
-        hbDropLabel.Text = opt.label
-        TixSettings.HitboxSize = opt.mult
-        -- Se já estiver ativo, reaplica com novo tamanho
-        if hitboxActive then setHitboxAll(true) end
-        TweenService:Create(hbDropdown, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(55, 10, 10)}):Play()
-        task.wait(0.15)
-        TweenService:Create(hbDropdown, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 8, 8)}):Play()
-    end)
-
-    -- Botão Ativar / Desativar
-    local hbBtn = Instance.new("TextButton", hbContainer)
-    hbBtn.Size = UDim2.new(1, -15, 0, 28)
-    hbBtn.Position = UDim2.new(0, 8, 0, 68)
-    hbBtn.BackgroundColor3 = RedzCardBg
-    hbBtn.AutoButtonColor = false
-    hbBtn.Text = "ATIVAR HITBOX"
-    hbBtn.Font = Enum.Font.GothamBold
-    hbBtn.TextColor3 = OffText
-    hbBtn.TextSize = 13
-    Instance.new("UICorner", hbBtn)
-    local hbBtnStroke = Instance.new("UIStroke", hbBtn)
-    hbBtnStroke.Thickness = 1; hbBtnStroke.Color = RedzPrimary; hbBtnStroke.Transparency = 0.5
-
-    hbBtn.MouseButton1Click:Connect(function()
-        local nowActive = not hitboxActive
-        setHitboxAll(nowActive)
-        if nowActive then
-            TweenService:Create(hbBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(60, 5, 5)}):Play()
-            hbBtn.Text = "DESATIVAR HITBOX"
-            hbBtn.TextColor3 = RedzPrimary
-            hbBtnStroke.Transparency = 0
-        else
-            TweenService:Create(hbBtn, TweenInfo.new(0.3), {BackgroundColor3 = RedzCardBg}):Play()
-            hbBtn.Text = "ATIVAR HITBOX"
-            hbBtn.TextColor3 = OffText
-            hbBtnStroke.Transparency = 0.5
-        end
-    end)
-end
--- ────────────────────────────────────────────────────────────
 -- Background Threads
 task.spawn(function()
     while task.wait(2) do
@@ -544,6 +369,17 @@ local lastTriggerClick = 0
 
 RunService.RenderStepped:Connect(function()
     local accent = RedzPrimary
+    local isStreamproofActive = TixSettings.Streamproof
+
+    -- STREAMPROOF DA INTERFACE PRINCIPAL
+    if TixUI then
+        if isStreamproofActive then
+            pcall(function() TixUI.DisplayOrder = -2147483648 end)
+            if Main.Visible then Main.BackgroundTransparency = 0.99 end
+        else
+            TixUI.DisplayOrder = 0; Main.BackgroundTransparency = 0
+        end
+    end
 
     -- CONFIGURAÇÃO DO CÍRCULO FOV
     Circle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
@@ -553,14 +389,27 @@ RunService.RenderStepped:Connect(function()
     ToggleStroke.Color = accent
     Title.TextColor3 = accent
 
-    Circle.Visible = TixSettings.CircleVis
+    if isStreamproofActive then Circle.Visible = false else Circle.Visible = TixSettings.CircleVis end
 
-    -- LÓGICA DO AIMBOT STICKY
+    -- LÓGICA DO AIMBOT STICKY COM SIMULAÇÃO HUMANA
     if TixSettings.Sticky then
         local lock = getClosest()
         if lock then 
             local targetCFrame = CFrame.new(Camera.CFrame.Position, lock.Position)
             local lerpFactor = 1 / (1 + (TixSettings.Smoothness - 1) * 0.12)
+            
+            if TixSettings.Humanized then
+                local timeScale = tick() * 12
+                local microShakeX = math.sin(timeScale) * 0.0012
+                local microShakeY = math.cos(timeScale * 0.8) * 0.0012
+                local randomFactor = math.random(-5, 5) * 0.0001
+                
+                targetCFrame = targetCFrame * CFrame.Angles(microShakeY + randomFactor, microShakeX + randomFactor, 0)
+                
+                local screenPos = Camera:WorldToViewportPoint(lock.Position)
+                local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
+                if distanceToCenter < 30 then lerpFactor = lerpFactor * 0.65 end
+            end
             Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.clamp(lerpFactor, 0, 1))
         end
     end
@@ -610,8 +459,6 @@ RunService.RenderStepped:Connect(function()
         local hum = char:FindFirstChild("Humanoid")
         local isAlive = head and hum and hum.Health > 0
         local espColor = accent
-        -- Cor laranja indica hitbox expandida ativa
-        local hitboxTint = hitboxActive and Color3.fromRGB(255, 140, 0) or nil
 
         if TixSettings.ESP and isAlive and head then
             local ignoreList = {LocalPlayer.Character, Camera}
@@ -620,13 +467,15 @@ RunService.RenderStepped:Connect(function()
             if hit and hit:IsDescendantOf(char) then espColor = Color3.fromRGB(0, 255, 0) end
         end
         
-        visual.High.Enabled = TixSettings.ESP and isAlive
-        visual.High.Adornee = char
-        visual.High.FillColor = hitboxTint or espColor
-        visual.High.OutlineColor = hitboxActive and Color3.fromRGB(255, 180, 0) or Color3.new(1,1,1)
+        if isStreamproofActive then
+            visual.High.Enabled = false
+        else
+            visual.High.Enabled = TixSettings.ESP and isAlive
+        end
+        visual.High.Adornee = char; visual.High.FillColor = espColor; visual.High.OutlineColor = Color3.new(1,1,1)
         clearSkeleton(visual)
         
-        if TixSettings.ESP and isAlive then
+        if TixSettings.ESP and isAlive and not isStreamproofActive then
             local rigType = (hum.RigType == Enum.HumanoidRigType.R15) and "R15" or "R6"
             local bonesList = BoneStructure[rigType]
             for index, bonePair in ipairs(bonesList) do
@@ -641,7 +490,7 @@ RunService.RenderStepped:Connect(function()
                             line.Visible = true
                             line.From = Vector2.new(posA.X, posA.Y)
                             line.To = Vector2.new(poolB.X, poolB.Y)
-                            line.Color = hitboxTint or espColor
+                            line.Color = espColor
                         end
                     end
                 end
