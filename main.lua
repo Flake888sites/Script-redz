@@ -360,15 +360,54 @@ task.spawn(function()
     end
 end)
 
+local function cleanVisual(visual)
+    pcall(function()
+        if visual.High then visual.High:Destroy() end
+        if visual.Bones then for _, l in pairs(visual.Bones) do l:Remove() end end
+        if visual.HpBar then visual.HpBar.bg:Remove(); visual.HpBar.fill:Remove() end
+        if visual.NameTag then visual.NameTag:Remove() end
+        if visual.DistTag then visual.DistTag:Remove() end
+    end)
+end
+
 task.spawn(function()
     while task.wait(10) do
         for char, visual in pairs(visualCache) do
-            pcall(function()
-                if visual.High then visual.High:Destroy() end
-                if visual.Bones then for _, line in pairs(visual.Bones) do line:Remove() end end
-            end)
+            cleanVisual(visual)
         end
         table.clear(visualCache)
+    end
+end)
+
+-- Limpa o cache do char antigo quando jogador renasce
+for _, p in pairs(Players:GetPlayers()) do
+    p.CharacterAdded:Connect(function(newChar)
+        for char, visual in pairs(visualCache) do
+            if char ~= newChar and Players:GetPlayerFromCharacter(char) == p then
+                cleanVisual(visual)
+                visualCache[char] = nil
+            end
+        end
+    end)
+end
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function(newChar)
+        for char, visual in pairs(visualCache) do
+            if char ~= newChar and Players:GetPlayerFromCharacter(char) == p then
+                cleanVisual(visual)
+                visualCache[char] = nil
+            end
+        end
+    end)
+end)
+
+-- Limpa quando jogador sai
+Players.PlayerRemoving:Connect(function(p)
+    for char, visual in pairs(visualCache) do
+        if Players:GetPlayerFromCharacter(char) == p then
+            cleanVisual(visual)
+            visualCache[char] = nil
+        end
     end
 end)
 
