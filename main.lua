@@ -20,8 +20,6 @@ local TixSettings = {
     Auto360 = false,        
     SpinSpeed = 15,
     TargetPart = "Head",
-    Humanized = false,   -- Nova Opção
-    Streamproof = false  -- Nova Opção
 }
 
 -- REDZ THEME COLORS
@@ -249,12 +247,10 @@ end
 
 local indicators = {
     Sticky = AddToggle("Sticky Aim", "Sticky"),
-    Humanized = AddToggle("Simulacao Humana", "Humanized"), -- Botão Novo
     Walls = AddToggle("Wall Check", "WallCheck"),
     Teams = AddToggle("Team Check", "TeamCheck"),
     Friends = AddToggle("Friend Check", "FriendCheck"),
     ESP = AddToggle("Visual ESP + Skeleton", "ESP"),
-    Streamproof = AddToggle("Modo Antigravacao", "Streamproof"), -- Botão Novo
     Trickshot = AddToggle("Auto 360 On Jump", "Auto360"), 
     Trigger = AddToggle("Trigger Bot", "Triggerbot"),
     Optimizer = AddToggle("FPS Otimizador", "Optimizer"),
@@ -263,7 +259,7 @@ local indicators = {
 
 AddSelector("Puxar Em (Target)", "TargetPart", {"Head", "Torso", "HumanoidRootPart"})
 AddSlider("Tamanho do FOV", "FOV", 10, 600, 150)
-AddSlider("Suavidade (Smoothness)", "Smoothness", 1, 50, 1)
+AddSlider("Suavidade (Smoothness)", "Smoothness", 1, 200, 1)
 AddSlider("Velocidade do 360", "SpinSpeed", 5, 30, 15)
 -- Background Threads
 task.spawn(function()
@@ -369,17 +365,6 @@ local lastTriggerClick = 0
 
 RunService.RenderStepped:Connect(function()
     local accent = RedzPrimary
-    local isStreamproofActive = TixSettings.Streamproof
-
-    -- STREAMPROOF DA INTERFACE PRINCIPAL
-    if TixUI then
-        if isStreamproofActive then
-            pcall(function() TixUI.DisplayOrder = -2147483648 end)
-            if Main.Visible then Main.BackgroundTransparency = 0.99 end
-        else
-            TixUI.DisplayOrder = 0; Main.BackgroundTransparency = 0
-        end
-    end
 
     -- CONFIGURAÇÃO DO CÍRCULO FOV
     Circle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
@@ -389,27 +374,14 @@ RunService.RenderStepped:Connect(function()
     ToggleStroke.Color = accent
     Title.TextColor3 = accent
 
-    if isStreamproofActive then Circle.Visible = false else Circle.Visible = TixSettings.CircleVis end
+    Circle.Visible = TixSettings.CircleVis
 
-    -- LÓGICA DO AIMBOT STICKY COM SIMULAÇÃO HUMANA
+    -- LÓGICA DO AIMBOT STICKY
     if TixSettings.Sticky then
         local lock = getClosest()
         if lock then 
             local targetCFrame = CFrame.new(Camera.CFrame.Position, lock.Position)
             local lerpFactor = 1 / (1 + (TixSettings.Smoothness - 1) * 0.12)
-            
-            if TixSettings.Humanized then
-                local timeScale = tick() * 12
-                local microShakeX = math.sin(timeScale) * 0.0012
-                local microShakeY = math.cos(timeScale * 0.8) * 0.0012
-                local randomFactor = math.random(-5, 5) * 0.0001
-                
-                targetCFrame = targetCFrame * CFrame.Angles(microShakeY + randomFactor, microShakeX + randomFactor, 0)
-                
-                local screenPos = Camera:WorldToViewportPoint(lock.Position)
-                local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
-                if distanceToCenter < 30 then lerpFactor = lerpFactor * 0.65 end
-            end
             Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.clamp(lerpFactor, 0, 1))
         end
     end
@@ -467,15 +439,11 @@ RunService.RenderStepped:Connect(function()
             if hit and hit:IsDescendantOf(char) then espColor = Color3.fromRGB(0, 255, 0) end
         end
         
-        if isStreamproofActive then
-            visual.High.Enabled = false
-        else
-            visual.High.Enabled = TixSettings.ESP and isAlive
-        end
+        visual.High.Enabled = TixSettings.ESP and isAlive
         visual.High.Adornee = char; visual.High.FillColor = espColor; visual.High.OutlineColor = Color3.new(1,1,1)
         clearSkeleton(visual)
         
-        if TixSettings.ESP and isAlive and not isStreamproofActive then
+        if TixSettings.ESP and isAlive then
             local rigType = (hum.RigType == Enum.HumanoidRigType.R15) and "R15" or "R6"
             local bonesList = BoneStructure[rigType]
             for index, bonePair in ipairs(bonesList) do
@@ -498,3 +466,5 @@ RunService.RenderStepped:Connect(function()
         end
     end
 end)
+
+             
