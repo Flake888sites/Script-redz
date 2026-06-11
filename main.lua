@@ -11,17 +11,19 @@ local TixSettings = {
     WallCheck = true,
     TeamCheck = false,
     FriendCheck = false,
-    ESP = false,
+    ESPBox = false,
+    ESPSkeleton = false,
+    ESPHealth = false,
+    ESPName = false,
+    ESPDistance = false,
     FOV = 150,
     Smoothness = 1,
     CircleVis = false,
-    Optimizer = false,     
-    Triggerbot = false,    
-    Auto360 = false,        
+    Optimizer = false,
+    Triggerbot = false,
+    Auto360 = false,
     SpinSpeed = 15,
     TargetPart = "Head",
-    Humanized = false,   -- Nova Opção
-    Streamproof = false  -- Nova Opção
 }
 
 -- REDZ THEME COLORS
@@ -51,6 +53,13 @@ Circle.Radius = TixSettings.FOV
 Circle.Filled = false
 
 local visualCache = {}
+-- visualCache[char] = {
+--   High    = Highlight (box/chams),
+--   Bones   = {Line, ...} (skeleton),
+--   HpBar   = {bg=Line, fill=Line} (health bar),
+--   NameTag = Drawing Text (name),
+--   DistTag = Drawing Text (distance),
+-- }
 local BoneStructure = {
     R15 = {
         {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"},
@@ -66,7 +75,6 @@ local BoneStructure = {
     }
 }
 
--- UI Setup
 local TixUI = Instance.new("ScreenGui")
 TixUI.Name = "REDZ_XITER_V2"
 TixUI.Parent = gethui and gethui() or game:GetService("CoreGui")
@@ -134,20 +142,81 @@ CloseBtn.MouseButton1Click:Connect(function()
     end)
 end)
 
-local Scroll = Instance.new("ScrollingFrame", Main)
-Scroll.Size = UDim2.new(1, -20, 1, -70)
-Scroll.Position = UDim2.new(0, 10, 0, 60)
-Scroll.BackgroundTransparency = 1
-Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-Scroll.ScrollBarThickness = 2
-Scroll.ScrollBarImageColor3 = RedzPrimary
+-- ── TAB BAR ────────────────────────────────────────────────
+local TabBar = Instance.new("Frame", Main)
+TabBar.Size = UDim2.new(1, -20, 0, 28)
+TabBar.Position = UDim2.new(0, 10, 0, 46)
+TabBar.BackgroundTransparency = 1
 
-local UIList = Instance.new("UIListLayout", Scroll)
-UIList.Padding = UDim.new(0, 6)
+local TabLayout = Instance.new("UIListLayout", TabBar)
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.Padding = UDim.new(0, 6)
 
-local function AddToggle(text, settingKey)
-    local btn = Instance.new("TextButton", Scroll)
+local function MakeTab(label)
+    local tb = Instance.new("TextButton", TabBar)
+    tb.Size = UDim2.new(0, 148, 1, 0)
+    tb.BackgroundColor3 = RedzCardBg
+    tb.AutoButtonColor = false
+    tb.Text = label
+    tb.Font = Enum.Font.GothamBold
+    tb.TextSize = 13
+    tb.TextColor3 = OffText
+    Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 6)
+    local s = Instance.new("UIStroke", tb)
+    s.Thickness = 1; s.Color = RedzPrimary; s.Transparency = 0.7
+    return tb, s
+end
+
+local TabAimbot, TabAimbotStroke = MakeTab("Aimbot")
+local TabVisual, TabVisualStroke = MakeTab("Visual & ESP")
+
+-- shared scroll factory
+local function MakeScroll(parent)
+    local s = Instance.new("ScrollingFrame", parent)
+    s.Size = UDim2.new(1, -20, 1, -90)
+    s.Position = UDim2.new(0, 10, 0, 82)
+    s.BackgroundTransparency = 1
+    s.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    s.CanvasSize = UDim2.new(0, 0, 0, 0)
+    s.ScrollBarThickness = 2
+    s.ScrollBarImageColor3 = RedzPrimary
+    s.Visible = false
+    local l = Instance.new("UIListLayout", s); l.Padding = UDim.new(0, 6)
+    return s
+end
+
+local ScrollAimbot = MakeScroll(Main)
+local ScrollVisual = MakeScroll(Main)
+
+-- Tab switch logic
+local function activateTab(scroll, tabBtn, tabStroke, otherScroll, otherBtn, otherStroke)
+    scroll.Visible = true
+    otherScroll.Visible = false
+    tabBtn.TextColor3 = RedzPrimary
+    tabBtn.BackgroundColor3 = Color3.fromRGB(50, 5, 5)
+    tabStroke.Transparency = 0
+    otherBtn.TextColor3 = OffText
+    otherBtn.BackgroundColor3 = RedzCardBg
+    otherStroke.Transparency = 0.7
+end
+
+TabAimbot.MouseButton1Click:Connect(function()
+    activateTab(ScrollAimbot, TabAimbot, TabAimbotStroke, ScrollVisual, TabVisual, TabVisualStroke)
+end)
+TabVisual.MouseButton1Click:Connect(function()
+    activateTab(ScrollVisual, TabVisual, TabVisualStroke, ScrollAimbot, TabAimbot, TabAimbotStroke)
+end)
+
+-- Start on Aimbot tab
+activateTab(ScrollAimbot, TabAimbot, TabAimbotStroke, ScrollVisual, TabVisual, TabVisualStroke)
+
+-- Scroll is now an alias so existing AddToggle/AddSlider/AddSelector functions work
+-- We override Scroll per section below using a wrapper approach
+local Scroll = ScrollAimbot  -- default target for helper functions
+
+local function AddToggle(text, settingKey, targetScroll)
+    targetScroll = targetScroll or Scroll
+    local btn = Instance.new("TextButton", targetScroll)
     btn.Size = UDim2.new(1, -5, 0, 42)
     btn.BackgroundColor3 = RedzCardBg
     btn.Text = ""; btn.AutoButtonColor = false
@@ -177,9 +246,10 @@ local function AddToggle(text, settingKey)
     return {Label = Label, Status = Status, Active = function() return TixSettings[settingKey] end}
 end
 
-local function AddSlider(text, settingKey, min, max, default)
+local function AddSlider(text, settingKey, min, max, default, targetScroll)
+    targetScroll = targetScroll or Scroll
     TixSettings[settingKey] = default
-    local container = Instance.new("Frame", Scroll)
+    local container = Instance.new("Frame", targetScroll)
     container.Size = UDim2.new(1, -5, 0, 50); container.BackgroundColor3 = RedzCardBg
     Instance.new("UICorner", container)
     local BStroke = Instance.new("UIStroke", container)
@@ -218,8 +288,9 @@ local function AddSlider(text, settingKey, min, max, default)
     end)
 end
 
-local function AddSelector(text, settingKey, options)
-    local btn = Instance.new("TextButton", Scroll)
+local function AddSelector(text, settingKey, options, targetScroll)
+    targetScroll = targetScroll or Scroll
+    local btn = Instance.new("TextButton", targetScroll)
     btn.Size = UDim2.new(1, -5, 0, 42); btn.BackgroundColor3 = RedzCardBg; btn.Text = ""; btn.AutoButtonColor = false
     Instance.new("UICorner", btn)
     local BStroke = Instance.new("UIStroke", btn)
@@ -247,24 +318,30 @@ local function AddSelector(text, settingKey, options)
     end)
 end
 
+-- ── AIMBOT TAB ──────────────────────────────────────────────
 local indicators = {
-    Sticky = AddToggle("Sticky Aim", "Sticky"),
-    Humanized = AddToggle("Simulacao Humana", "Humanized"), -- Botão Novo
-    Walls = AddToggle("Wall Check", "WallCheck"),
-    Teams = AddToggle("Team Check", "TeamCheck"),
-    Friends = AddToggle("Friend Check", "FriendCheck"),
-    ESP = AddToggle("Visual ESP + Skeleton", "ESP"),
-    Streamproof = AddToggle("Modo Antigravacao", "Streamproof"), -- Botão Novo
-    Trickshot = AddToggle("Auto 360 On Jump", "Auto360"), 
-    Trigger = AddToggle("Trigger Bot", "Triggerbot"),
-    Optimizer = AddToggle("FPS Otimizador", "Optimizer"),
-    FOV = AddToggle("Show FOV", "CircleVis")
+    Sticky   = AddToggle("Sticky Aim",        "Sticky",      ScrollAimbot),
+    Walls    = AddToggle("Wall Check",         "WallCheck",   ScrollAimbot),
+    Teams    = AddToggle("Team Check",         "TeamCheck",   ScrollAimbot),
+    Friends  = AddToggle("Friend Check",       "FriendCheck", ScrollAimbot),
+    Trickshot= AddToggle("Auto 360 On Jump",   "Auto360",     ScrollAimbot),
+    Trigger  = AddToggle("Trigger Bot",        "Triggerbot",  ScrollAimbot),
+    Optimizer= AddToggle("FPS Otimizador",     "Optimizer",   ScrollAimbot),
+    FOVCircle= AddToggle("Show FOV Circle",    "CircleVis",   ScrollAimbot),
 }
 
-AddSelector("Puxar Em (Target)", "TargetPart", {"Head", "Torso", "HumanoidRootPart"})
-AddSlider("Tamanho do FOV", "FOV", 10, 600, 150)
-AddSlider("Suavidade (Smoothness)", "Smoothness", 1, 50, 1)
-AddSlider("Velocidade do 360", "SpinSpeed", 5, 30, 15)
+AddSelector("Puxar Em (Target)", "TargetPart", {"Head", "Torso", "HumanoidRootPart"}, ScrollAimbot)
+AddSlider("Tamanho do FOV",       "FOV",        10,  600, 150, ScrollAimbot)
+AddSlider("Suavidade (Smoothness)","Smoothness",  1,  200,   1, ScrollAimbot)
+AddSlider("Velocidade do 360",    "SpinSpeed",    5,   30,  15, ScrollAimbot)
+
+-- ── VISUAL & ESP TAB ────────────────────────────────────────
+AddToggle("ESP Box (Highlight)",    "ESPBox",      ScrollVisual)
+AddToggle("ESP Skeleton",           "ESPSkeleton", ScrollVisual)
+AddToggle("ESP Health Bar",         "ESPHealth",   ScrollVisual)
+AddToggle("ESP Nome",               "ESPName",     ScrollVisual)
+AddToggle("ESP Distância",          "ESPDistance", ScrollVisual)
+
 -- Background Threads
 task.spawn(function()
     while task.wait(2) do
@@ -369,17 +446,6 @@ local lastTriggerClick = 0
 
 RunService.RenderStepped:Connect(function()
     local accent = RedzPrimary
-    local isStreamproofActive = TixSettings.Streamproof
-
-    -- STREAMPROOF DA INTERFACE PRINCIPAL
-    if TixUI then
-        if isStreamproofActive then
-            pcall(function() TixUI.DisplayOrder = -2147483648 end)
-            if Main.Visible then Main.BackgroundTransparency = 0.99 end
-        else
-            TixUI.DisplayOrder = 0; Main.BackgroundTransparency = 0
-        end
-    end
 
     -- CONFIGURAÇÃO DO CÍRCULO FOV
     Circle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
@@ -389,27 +455,14 @@ RunService.RenderStepped:Connect(function()
     ToggleStroke.Color = accent
     Title.TextColor3 = accent
 
-    if isStreamproofActive then Circle.Visible = false else Circle.Visible = TixSettings.CircleVis end
+    Circle.Visible = TixSettings.CircleVis
 
-    -- LÓGICA DO AIMBOT STICKY COM SIMULAÇÃO HUMANA
+    -- LÓGICA DO AIMBOT STICKY
     if TixSettings.Sticky then
         local lock = getClosest()
         if lock then 
             local targetCFrame = CFrame.new(Camera.CFrame.Position, lock.Position)
             local lerpFactor = 1 / (1 + (TixSettings.Smoothness - 1) * 0.12)
-            
-            if TixSettings.Humanized then
-                local timeScale = tick() * 12
-                local microShakeX = math.sin(timeScale) * 0.0012
-                local microShakeY = math.cos(timeScale * 0.8) * 0.0012
-                local randomFactor = math.random(-5, 5) * 0.0001
-                
-                targetCFrame = targetCFrame * CFrame.Angles(microShakeY + randomFactor, microShakeX + randomFactor, 0)
-                
-                local screenPos = Camera:WorldToViewportPoint(lock.Position)
-                local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
-                if distanceToCenter < 30 then lerpFactor = lerpFactor * 0.65 end
-            end
             Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.clamp(lerpFactor, 0, 1))
         end
     end
@@ -441,60 +494,157 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- SISTEMA DE ESP (CHAMS + SKELETON) COM SUPORTE STREAMPROOF
+    -- SISTEMA DE ESP
     local targets = {}
     for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer and p.Character then table.insert(targets, p.Character) end end
-    
+
+    local anyESP = TixSettings.ESPBox or TixSettings.ESPSkeleton or TixSettings.ESPHealth or TixSettings.ESPName or TixSettings.ESPDistance
+
     for _, char in pairs(targets) do
+        -- Init visual cache entry
         if not visualCache[char] then
-            visualCache[char] = { High = Instance.new("Highlight", TixUI), Bones = {} }
+            local entry = { Bones = {} }
+
+            -- Box (Highlight)
+            local h = Instance.new("Highlight", TixUI)
+            h.Enabled = false; entry.High = h
+
+            -- Skeleton lines (14 for R15)
             for i = 1, 14 do
                 local l = Drawing.new("Line")
-                l.Thickness = 1.5; l.Transparency = 1; table.insert(visualCache[char].Bones, l)
+                l.Thickness = 1.5; l.Transparency = 1; l.Visible = false
+                table.insert(entry.Bones, l)
             end
+
+            -- Health bar (background + fill)
+            local hpBg = Drawing.new("Line"); hpBg.Thickness = 4; hpBg.Visible = false; hpBg.Color = Color3.fromRGB(30, 30, 30)
+            local hpFill = Drawing.new("Line"); hpFill.Thickness = 3; hpFill.Visible = false
+            entry.HpBar = {bg = hpBg, fill = hpFill}
+
+            -- Name tag
+            local nt = Drawing.new("Text"); nt.Size = 13; nt.Font = 2; nt.Center = true; nt.Outline = true; nt.Visible = false
+            entry.NameTag = nt
+
+            -- Distance tag
+            local dt = Drawing.new("Text"); dt.Size = 12; dt.Font = 2; dt.Center = true; dt.Outline = true; dt.Visible = false
+            entry.DistTag = dt
+
+            visualCache[char] = entry
         end
-        
+
         local visual = visualCache[char]
         local head = char:FindFirstChild("Head")
         local hum = char:FindFirstChild("Humanoid")
         local isAlive = head and hum and hum.Health > 0
         local espColor = accent
 
-        if TixSettings.ESP and isAlive and head then
+        -- Wall-check color: green = through wall
+        if anyESP and isAlive and head then
             local ignoreList = {LocalPlayer.Character, Camera}
             local ray = Ray.new(Camera.CFrame.Position, (head.Position - Camera.CFrame.Position).Unit * 1000)
             local hit = workspace:FindPartOnRayWithIgnoreList(ray, ignoreList)
             if hit and hit:IsDescendantOf(char) then espColor = Color3.fromRGB(0, 255, 0) end
         end
-        
-        if isStreamproofActive then
-            visual.High.Enabled = false
-        else
-            visual.High.Enabled = TixSettings.ESP and isAlive
+
+        -- ── ESP BOX ──────────────────────────────────────────
+        visual.High.Enabled = TixSettings.ESPBox and isAlive
+        if TixSettings.ESPBox and isAlive then
+            visual.High.Adornee = char
+            visual.High.FillColor = espColor
+            visual.High.OutlineColor = Color3.new(1, 1, 1)
         end
-        visual.High.Adornee = char; visual.High.FillColor = espColor; visual.High.OutlineColor = Color3.new(1,1,1)
+
+        -- ── ESP SKELETON ─────────────────────────────────────
         clearSkeleton(visual)
-        
-        if TixSettings.ESP and isAlive and not isStreamproofActive then
+        if TixSettings.ESPSkeleton and isAlive then
             local rigType = (hum.RigType == Enum.HumanoidRigType.R15) and "R15" or "R6"
-            local bonesList = BoneStructure[rigType]
-            for index, bonePair in ipairs(bonesList) do
+            for index, bonePair in ipairs(BoneStructure[rigType]) do
                 local partA = char:FindFirstChild(bonePair[1])
                 local partB = char:FindFirstChild(bonePair[2])
                 if partA and partB then
                     local posA, visA = Camera:WorldToViewportPoint(partA.Position)
-                    local poolB, visB = Camera:WorldToViewportPoint(partB.Position)
+                    local posB, visB = Camera:WorldToViewportPoint(partB.Position)
                     if visA and visB then
                         local line = visual.Bones[index]
                         if line then
                             line.Visible = true
                             line.From = Vector2.new(posA.X, posA.Y)
-                            line.To = Vector2.new(poolB.X, poolB.Y)
+                            line.To = Vector2.new(posB.X, posB.Y)
                             line.Color = espColor
                         end
                     end
                 end
             end
+        end
+
+        -- ── ESP HEALTH BAR ───────────────────────────────────
+        local hpBg = visual.HpBar.bg
+        local hpFill = visual.HpBar.fill
+        if TixSettings.ESPHealth and isAlive and head then
+            local headPos, headVis = Camera:WorldToViewportPoint(head.Position)
+            local rootPart = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+            if headVis and rootPart then
+                local rootPos, _ = Camera:WorldToViewportPoint(rootPart.Position)
+                local barHeight = math.abs(headPos.Y - rootPos.Y) * 1.4
+                local barX = headPos.X - 18
+                local barTopY = headPos.Y - barHeight * 0.1
+                local barBotY = barTopY + barHeight
+
+                hpBg.Visible = true
+                hpBg.From = Vector2.new(barX, barTopY)
+                hpBg.To = Vector2.new(barX, barBotY)
+
+                local hpFrac = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                local fillBotY = barBotY
+                local fillTopY = barBotY - barHeight * hpFrac
+                local hpColor = Color3.fromRGB(
+                    math.round(255 * (1 - hpFrac)),
+                    math.round(255 * hpFrac),
+                    0
+                )
+                hpFill.Visible = true
+                hpFill.From = Vector2.new(barX, fillTopY)
+                hpFill.To = Vector2.new(barX, fillBotY)
+                hpFill.Color = hpColor
+            end
+        else
+            hpBg.Visible = false; hpFill.Visible = false
+        end
+
+        -- ── ESP NAME ─────────────────────────────────────────
+        local nt = visual.NameTag
+        if TixSettings.ESPName and isAlive and head then
+            local headPos, headVis = Camera:WorldToViewportPoint(head.Position)
+            if headVis then
+                local player = Players:GetPlayerFromCharacter(char)
+                nt.Visible = true
+                nt.Text = player and player.Name or "?"
+                nt.Color = espColor
+                nt.Position = Vector2.new(headPos.X, headPos.Y - 22)
+            else
+                nt.Visible = false
+            end
+        else
+            nt.Visible = false
+        end
+
+        -- ── ESP DISTANCE ─────────────────────────────────────
+        local dt = visual.DistTag
+        if TixSettings.ESPDistance and isAlive and head then
+            local headPos, headVis = Camera:WorldToViewportPoint(head.Position)
+            if headVis then
+                local dist = math.floor((head.Position - Camera.CFrame.Position).Magnitude)
+                dt.Visible = true
+                dt.Text = dist .. "m"
+                dt.Color = OffText
+                -- Show below name if both active, else below head
+                local yOffset = TixSettings.ESPName and 34 or 22
+                dt.Position = Vector2.new(headPos.X, headPos.Y - yOffset + 14)
+            else
+                dt.Visible = false
+            end
+        else
+            dt.Visible = false
         end
     end
 end)
