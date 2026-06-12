@@ -16,6 +16,7 @@ local TixSettings = {
     ESPHealth = false,
     ESPName = false,
     ESPDistance = false,
+    ESPTeamCheck = false,
     FOV = 150,
     Smoothness = 1,
     CircleVis = false,
@@ -336,11 +337,12 @@ AddSlider("Suavidade (Smoothness)","Smoothness",  1,  200,   1, ScrollAimbot)
 AddSlider("Velocidade do 360",    "SpinSpeed",    5,   30,  15, ScrollAimbot)
 
 -- ── VISUAL & ESP TAB ────────────────────────────────────────
-AddToggle("ESP Box (Highlight)",    "ESPBox",      ScrollVisual)
-AddToggle("ESP Skeleton",           "ESPSkeleton", ScrollVisual)
-AddToggle("ESP Health Bar",         "ESPHealth",   ScrollVisual)
-AddToggle("ESP Nome",               "ESPName",     ScrollVisual)
-AddToggle("ESP Distância",          "ESPDistance", ScrollVisual)
+AddToggle("ESP Box (Highlight)",    "ESPBox",       ScrollVisual)
+AddToggle("ESP Skeleton",           "ESPSkeleton",  ScrollVisual)
+AddToggle("ESP Health Bar",         "ESPHealth",    ScrollVisual)
+AddToggle("ESP Nome",               "ESPName",      ScrollVisual)
+AddToggle("ESP Distância",          "ESPDistance",  ScrollVisual)
+AddToggle("ESP Team Check",         "ESPTeamCheck", ScrollVisual)
 
 -- Background Threads
 task.spawn(function()
@@ -535,11 +537,18 @@ RunService.RenderStepped:Connect(function()
 
     -- SISTEMA DE ESP
     local targets = {}
-    for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer and p.Character then table.insert(targets, p.Character) end end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            -- Se ESPTeamCheck ativo, só mostra inimigos (times diferentes)
+            if TixSettings.ESPTeamCheck and p.Team == LocalPlayer.Team then continue end
+            table.insert(targets, p)
+        end
+    end
 
     local anyESP = TixSettings.ESPBox or TixSettings.ESPSkeleton or TixSettings.ESPHealth or TixSettings.ESPName or TixSettings.ESPDistance
 
-    for _, char in pairs(targets) do
+    for _, p in pairs(targets) do
+        local char = p.Character
         -- Init visual cache entry
         if not visualCache[char] then
             local entry = { Bones = {} }
@@ -575,10 +584,17 @@ RunService.RenderStepped:Connect(function()
         local head = char:FindFirstChild("Head")
         local hum = char:FindFirstChild("Humanoid")
         local isAlive = head and hum and hum.Health > 0
-        local espColor = accent
 
-        -- Wall-check color: green = through wall
-        if anyESP and isAlive and head then
+        -- Cor base: cor do time do jogador se ESPTeamCheck ativo, senão vermelho (accent)
+        local espColor
+        if TixSettings.ESPTeamCheck and p.Team then
+            espColor = p.TeamColor.Color
+        else
+            espColor = accent
+        end
+
+        -- Wall-check: fica verde quando visível através da parede (só sem ESPTeamCheck, pois já tem cor do time)
+        if not TixSettings.ESPTeamCheck and anyESP and isAlive and head then
             local ignoreList = {LocalPlayer.Character, Camera}
             local ray = Ray.new(Camera.CFrame.Position, (head.Position - Camera.CFrame.Position).Unit * 1000)
             local hit = workspace:FindPartOnRayWithIgnoreList(ray, ignoreList)
