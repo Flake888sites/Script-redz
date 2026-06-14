@@ -16,7 +16,6 @@ local TixSettings = {
     ESPHealth = false,
     ESPName = false,
     ESPDistance = false,
-    ESPTeamCheck = false,
     FOV = 150,
     Smoothness = 1,
     CircleVis = false,
@@ -25,8 +24,6 @@ local TixSettings = {
     Auto360 = false,
     SpinSpeed = 15,
     TargetPart = "Head",
-    Shiftlock = false,
-    Crosshair = false,
 }
 
 -- REDZ THEME COLORS
@@ -55,23 +52,6 @@ Circle.NumSides = 64
 Circle.Radius = TixSettings.FOV
 Circle.Filled = false
 
--- Crosshair drawings (círculo + ponto central)
-local CrosshairCircle = Drawing.new("Circle")
-CrosshairCircle.Visible = false
-CrosshairCircle.Thickness = 1.5
-CrosshairCircle.NumSides = 64
-CrosshairCircle.Radius = 10
-CrosshairCircle.Filled = false
-CrosshairCircle.Color = Color3.new(1, 1, 1)
-
-local CrosshairDot = Drawing.new("Circle")
-CrosshairDot.Visible = false
-CrosshairDot.Thickness = 1
-CrosshairDot.NumSides = 16
-CrosshairDot.Radius = 2
-CrosshairDot.Filled = true
-CrosshairDot.Color = Color3.new(1, 1, 1)
-
 local visualCache = {}
 -- visualCache[char] = {
 --   High    = Highlight (box/chams),
@@ -80,57 +60,6 @@ local visualCache = {}
 --   NameTag = Drawing Text (name),
 --   DistTag = Drawing Text (distance),
 -- }
-
--- Shiftlock state
-local shiftlockActive = false
-
-local function applyShiftlock()
-    shiftlockActive = true
-    TixSettings.Shiftlock = true
-    pcall(function()
-        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-        Camera.CameraType = Enum.CameraType.Custom
-        local char = LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.AutoRotate = false end
-        end
-    end)
-end
-
-local function revertShiftlock()
-    shiftlockActive = false
-    TixSettings.Shiftlock = false
-    pcall(function()
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-        local char = LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.AutoRotate = true end
-        end
-    end)
-end
-
--- Rotaciona personagem com a câmera quando shiftlock ativo
-RunService.Heartbeat:Connect(function()
-    if not shiftlockActive then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    local camCF = Camera.CFrame
-    root.CFrame = CFrame.new(root.Position)
-        * CFrame.Angles(0, math.atan2(-camCF.LookVector.X, -camCF.LookVector.Z), 0)
-end)
-
--- Reaplica ao renascer com shiftlock ativo
-LocalPlayer.CharacterAdded:Connect(function(char)
-    if shiftlockActive then
-        task.wait(0.5)
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then hum.AutoRotate = false end
-    end
-end)
 local BoneStructure = {
     R15 = {
         {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"},
@@ -399,67 +328,12 @@ local indicators = {
     Trigger  = AddToggle("Trigger Bot",        "Triggerbot",  ScrollAimbot),
     Optimizer= AddToggle("FPS Otimizador",     "Optimizer",   ScrollAimbot),
     FOVCircle= AddToggle("Show FOV Circle",    "CircleVis",   ScrollAimbot),
-    Crosshair= AddToggle("Mira 3ª Pessoa",     "Crosshair",   ScrollAimbot),
-    Shiftlock= AddToggle("Shiftlock",          "Shiftlock",   ScrollAimbot),
 }
-
--- Override do toggle de Shiftlock para chamar apply/revert
-do
-    local slBtn = ScrollAimbot:FindFirstChild("", false)
-    -- Reconecta via settingKey direto no AddToggle — sobrescreve o comportamento padrão
-    -- usando um segundo listener que monitora TixSettings.Shiftlock
-    local prevShiftlock = false
-    RunService.Heartbeat:Connect(function()
-        if TixSettings.Shiftlock ~= prevShiftlock then
-            prevShiftlock = TixSettings.Shiftlock
-            if TixSettings.Shiftlock then
-                applyShiftlock()
-            else
-                revertShiftlock()
-            end
-        end
-    end)
-end
 
 AddSelector("Puxar Em (Target)", "TargetPart", {"Head", "Torso", "HumanoidRootPart"}, ScrollAimbot)
 AddSlider("Tamanho do FOV",       "FOV",        10,  600, 150, ScrollAimbot)
 AddSlider("Suavidade (Smoothness)","Smoothness",  1,  200,   1, ScrollAimbot)
 AddSlider("Velocidade do 360",    "SpinSpeed",    5,   30,  15, ScrollAimbot)
-
--- Botão flutuante de Shiftlock (visível sempre — útil para mobile)
-local SLPanel = Instance.new("Frame", TixUI)
-SLPanel.Size = UDim2.new(0, 55, 0, 45)
-SLPanel.Position = UDim2.new(0, 20, 0, 80)  -- abaixo do botão REDZ
-SLPanel.BackgroundColor3 = RedzDarkBg
-SLPanel.Active = true
-SLPanel.Draggable = true
-Instance.new("UICorner", SLPanel)
-local SLStroke = Instance.new("UIStroke", SLPanel)
-SLStroke.Thickness = 2
-SLStroke.Color = OffText
-
-local SLBtn = Instance.new("TextButton", SLPanel)
-SLBtn.Size = UDim2.new(1, 0, 1, 0)
-SLBtn.BackgroundTransparency = 1
-SLBtn.Text = "SL"
-SLBtn.Font = Enum.Font.GothamBold
-SLBtn.TextColor3 = OffText
-SLBtn.TextSize = 14
-
-SLBtn.MouseButton1Click:Connect(function()
-    TixSettings.Shiftlock = not TixSettings.Shiftlock
-    if TixSettings.Shiftlock then
-        applyShiftlock()
-        SLBtn.TextColor3 = RedzPrimary
-        SLStroke.Color   = RedzPrimary
-        TweenService:Create(SLPanel, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(40, 5, 5)}):Play()
-    else
-        revertShiftlock()
-        SLBtn.TextColor3 = OffText
-        SLStroke.Color   = OffText
-        TweenService:Create(SLPanel, TweenInfo.new(0.3), {BackgroundColor3 = RedzDarkBg}):Play()
-    end
-end)
 
 AddSelector("Puxar Em (Target)", "TargetPart", {"Head", "Torso", "HumanoidRootPart"}, ScrollAimbot)
 AddSlider("Tamanho do FOV",       "FOV",        10,  600, 150, ScrollAimbot)
@@ -472,7 +346,6 @@ AddToggle("ESP Skeleton",           "ESPSkeleton",  ScrollVisual)
 AddToggle("ESP Health Bar",         "ESPHealth",    ScrollVisual)
 AddToggle("ESP Nome",               "ESPName",      ScrollVisual)
 AddToggle("ESP Distância",          "ESPDistance",  ScrollVisual)
-AddToggle("ESP Team Check",         "ESPTeamCheck", ScrollVisual)
 
 -- Background Threads
 task.spawn(function()
@@ -602,7 +475,7 @@ local function getClosest()
     for _, part in pairs(potentials) do
         local pos, vis = Camera:WorldToViewportPoint(part.Position)
         if vis and isVisible(part) then
-            local mag = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
+            local mag = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
             if mag < shortestFOV then target = part; shortestFOV = mag end
         end
     end
@@ -627,13 +500,6 @@ RunService.RenderStepped:Connect(function()
     Title.TextColor3 = accent
 
     Circle.Visible = TixSettings.CircleVis
-
-    -- CROSSHAIR
-    local crossCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    CrosshairCircle.Position = crossCenter
-    CrosshairDot.Position    = crossCenter
-    CrosshairCircle.Visible  = TixSettings.Crosshair
-    CrosshairDot.Visible     = TixSettings.Crosshair
 
     -- LÓGICA DO AIMBOT STICKY
     if TixSettings.Sticky then
@@ -676,8 +542,6 @@ RunService.RenderStepped:Connect(function()
     local targets = {}
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
-            -- Se ESPTeamCheck ativo, só mostra inimigos (times diferentes)
-            if TixSettings.ESPTeamCheck and p.Team == LocalPlayer.Team then continue end
             table.insert(targets, p)
         end
     end
@@ -722,15 +586,9 @@ RunService.RenderStepped:Connect(function()
         local hum = char:FindFirstChild("Humanoid")
         local isAlive = head and hum and hum.Health > 0
 
-        -- Cor base: cor do time do jogador se ESPTeamCheck ativo, senão vermelho (accent)
-        local espColor
-        if TixSettings.ESPTeamCheck and p.Team then
-            espColor = p.TeamColor.Color
-        else
-            espColor = accent
-        end
+        -- Cor base: vermelho (accent), fica verde quando visível
+        local espColor = accent
 
-        -- Wall-check: fica verde quando visível (aplica sempre, inclusive com ESPTeamCheck)
         if anyESP and isAlive and head then
             local ignoreList = {LocalPlayer.Character, Camera}
             local ray = Ray.new(Camera.CFrame.Position, (head.Position - Camera.CFrame.Position).Unit * 1000)
