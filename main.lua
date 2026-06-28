@@ -16,6 +16,8 @@ local TixSettings = {
     ESPHealth = false,
     ESPName = false,
     ESPDistance = false,
+    ESPTeamCheck = false,
+    ESPTeamSelected = {},  -- {[teamName]=true, ...} vazio = mostra todos os inimigos
     FOV = 150,
     Smoothness = 1,
     CircleVis = false,
@@ -335,17 +337,162 @@ AddSlider("Tamanho do FOV",       "FOV",        10,  600, 150, ScrollAimbot)
 AddSlider("Suavidade (Smoothness)","Smoothness",  1,  200,   1, ScrollAimbot)
 AddSlider("Velocidade do 360",    "SpinSpeed",    5,   30,  15, ScrollAimbot)
 
-AddSelector("Puxar Em (Target)", "TargetPart", {"Head", "Torso", "HumanoidRootPart"}, ScrollAimbot)
-AddSlider("Tamanho do FOV",       "FOV",        10,  600, 150, ScrollAimbot)
-AddSlider("Suavidade (Smoothness)","Smoothness",  1,  200,   1, ScrollAimbot)
-AddSlider("Velocidade do 360",    "SpinSpeed",    5,   30,  15, ScrollAimbot)
-
 -- ── VISUAL & ESP TAB ────────────────────────────────────────
 AddToggle("ESP Box (Highlight)",    "ESPBox",       ScrollVisual)
 AddToggle("ESP Skeleton",           "ESPSkeleton",  ScrollVisual)
 AddToggle("ESP Health Bar",         "ESPHealth",    ScrollVisual)
 AddToggle("ESP Nome",               "ESPName",      ScrollVisual)
 AddToggle("ESP Distância",          "ESPDistance",  ScrollVisual)
+AddToggle("ESP Team Check",         "ESPTeamCheck", ScrollVisual)
+
+-- ── GAVETA DE SELEÇÃO DE TIMES ───────────────────────────────
+do
+    local Teams = game:GetService("Teams")
+
+    local drawerOpen = false
+    local checkboxRefs = {}  -- [teamName] = {box=Frame, check=TextLabel}
+
+    -- Container externo (botão + gaveta)
+    local twContainer = Instance.new("Frame", ScrollVisual)
+    twContainer.Size = UDim2.new(1, -5, 0, 42)  -- cresce dinamicamente ao abrir
+    twContainer.BackgroundColor3 = RedzCardBg
+    twContainer.AutomaticSize = Enum.AutomaticSize.Y
+    twContainer.Name = "TeamDrawerContainer"
+    Instance.new("UICorner", twContainer)
+    local twStroke = Instance.new("UIStroke", twContainer)
+    twStroke.Thickness = 1; twStroke.Color = RedzPrimary; twStroke.Transparency = 0.8
+
+    local twLayout = Instance.new("UIListLayout", twContainer)
+    twLayout.Padding = UDim.new(0, 4)
+
+    -- Botão principal (abre/fecha a gaveta)
+    local twBtn = Instance.new("TextButton", twContainer)
+    twBtn.Size = UDim2.new(1, 0, 0, 42)
+    twBtn.BackgroundTransparency = 1
+    twBtn.Text = ""
+    twBtn.AutoButtonColor = false
+    twBtn.LayoutOrder = 1
+
+    local twLabel = Instance.new("TextLabel", twBtn)
+    twLabel.Size = UDim2.new(1, -60, 1, 0)
+    twLabel.Position = UDim2.new(0, 15, 0, 0)
+    twLabel.BackgroundTransparency = 1
+    twLabel.Text = "Selecionar Times"
+    twLabel.Font = Enum.Font.GothamBold
+    twLabel.TextColor3 = RedzPrimary
+    twLabel.TextSize = 14
+    twLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local twArrow = Instance.new("TextLabel", twBtn)
+    twArrow.Size = UDim2.new(0, 30, 1, 0)
+    twArrow.Position = UDim2.new(1, -38, 0, 0)
+    twArrow.BackgroundTransparency = 1
+    twArrow.Text = "▾"
+    twArrow.Font = Enum.Font.GothamBold
+    twArrow.TextColor3 = RedzPrimary
+    twArrow.TextSize = 16
+
+    -- Frame da gaveta (lista de times)
+    local twDrawer = Instance.new("Frame", twContainer)
+    twDrawer.Size = UDim2.new(1, -16, 0, 0)
+    twDrawer.Position = UDim2.new(0, 8, 0, 0)
+    twDrawer.BackgroundTransparency = 1
+    twDrawer.AutomaticSize = Enum.AutomaticSize.Y
+    twDrawer.Visible = false
+    twDrawer.LayoutOrder = 2
+    local twDrawerLayout = Instance.new("UIListLayout", twDrawer)
+    twDrawerLayout.Padding = UDim.new(0, 4)
+
+    local function clearDrawer()
+        for _, child in pairs(twDrawer:GetChildren()) do
+            if child:IsA("Frame") or child:IsA("TextButton") then child:Destroy() end
+        end
+        checkboxRefs = {}
+    end
+
+    local function rebuildDrawer()
+        clearDrawer()
+        local teamList = Teams:GetTeams()
+
+        if #teamList == 0 then
+            local emptyLbl = Instance.new("TextLabel", twDrawer)
+            emptyLbl.Size = UDim2.new(1, 0, 0, 28)
+            emptyLbl.BackgroundTransparency = 1
+            emptyLbl.Text = "Nenhum time encontrado neste jogo"
+            emptyLbl.Font = Enum.Font.Gotham
+            emptyLbl.TextColor3 = OffText
+            emptyLbl.TextSize = 12
+            return
+        end
+
+        for _, team in ipairs(teamList) do
+            if team ~= LocalPlayer.Team then
+                local row = Instance.new("TextButton", twDrawer)
+                row.Size = UDim2.new(1, 0, 0, 32)
+                row.BackgroundColor3 = Color3.fromRGB(30, 8, 8)
+                row.AutoButtonColor = false
+                row.Text = ""
+                Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+
+                local swatch = Instance.new("Frame", row)
+                swatch.Size = UDim2.new(0, 14, 0, 14)
+                swatch.Position = UDim2.new(0, 10, 0.5, -7)
+                swatch.BackgroundColor3 = team.TeamColor.Color
+                Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 3)
+
+                local nameLbl = Instance.new("TextLabel", row)
+                nameLbl.Size = UDim2.new(1, -70, 1, 0)
+                nameLbl.Position = UDim2.new(0, 32, 0, 0)
+                nameLbl.BackgroundTransparency = 1
+                nameLbl.Text = team.Name
+                nameLbl.Font = Enum.Font.GothamBold
+                nameLbl.TextColor3 = RedzPrimary
+                nameLbl.TextSize = 13
+                nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+                local checkBox = Instance.new("Frame", row)
+                checkBox.Size = UDim2.new(0, 18, 0, 18)
+                checkBox.Position = UDim2.new(1, -28, 0.5, -9)
+                checkBox.BackgroundColor3 = Color3.fromRGB(40, 10, 10)
+                Instance.new("UICorner", checkBox).CornerRadius = UDim.new(0, 4)
+                local cbStroke = Instance.new("UIStroke", checkBox)
+                cbStroke.Thickness = 1; cbStroke.Color = RedzPrimary
+
+                local checkMark = Instance.new("TextLabel", checkBox)
+                checkMark.Size = UDim2.new(1, 0, 1, 0)
+                checkMark.BackgroundTransparency = 1
+                checkMark.Text = "✓"
+                checkMark.Font = Enum.Font.GothamBold
+                checkMark.TextSize = 13
+                checkMark.TextColor3 = RedzPrimary
+                checkMark.Visible = TixSettings.ESPTeamSelected[team.Name] == true
+
+                checkboxRefs[team.Name] = {box = checkBox, mark = checkMark}
+
+                row.MouseButton1Click:Connect(function()
+                    local cur = TixSettings.ESPTeamSelected[team.Name]
+                    TixSettings.ESPTeamSelected[team.Name] = not cur
+                    checkMark.Visible = not cur
+                    checkBox.BackgroundColor3 = (not cur) and Color3.fromRGB(60, 5, 5) or Color3.fromRGB(40, 10, 10)
+                end)
+
+                checkBox.BackgroundColor3 = TixSettings.ESPTeamSelected[team.Name] and Color3.fromRGB(60, 5, 5) or Color3.fromRGB(40, 10, 10)
+            end
+        end
+    end
+
+    twBtn.MouseButton1Click:Connect(function()
+        drawerOpen = not drawerOpen
+        if drawerOpen then
+            rebuildDrawer()  -- atualiza a lista de times toda vez que abre
+            twDrawer.Visible = true
+            twArrow.Text = "▴"
+        else
+            twDrawer.Visible = false
+            twArrow.Text = "▾"
+        end
+    end)
+end
 
 -- Background Threads
 task.spawn(function()
@@ -475,7 +622,7 @@ local function getClosest()
     for _, part in pairs(potentials) do
         local pos, vis = Camera:WorldToViewportPoint(part.Position)
         if vis and isVisible(part) then
-            local mag = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
+            local mag = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
             if mag < shortestFOV then target = part; shortestFOV = mag end
         end
     end
@@ -542,6 +689,16 @@ RunService.RenderStepped:Connect(function()
     local targets = {}
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
+            if TixSettings.ESPTeamCheck then
+                -- nunca mostra o próprio time
+                if p.Team == LocalPlayer.Team then continue end
+                -- se houver times selecionados na gaveta, filtra por eles; vazio = mostra todos os inimigos
+                local hasSelection = next(TixSettings.ESPTeamSelected) ~= nil
+                if hasSelection then
+                    local teamName = p.Team and p.Team.Name or "Sem Time"
+                    if not TixSettings.ESPTeamSelected[teamName] then continue end
+                end
+            end
             table.insert(targets, p)
         end
     end
@@ -586,7 +743,7 @@ RunService.RenderStepped:Connect(function()
         local hum = char:FindFirstChild("Humanoid")
         local isAlive = head and hum and hum.Health > 0
 
-        -- Cor base: vermelho (accent), fica verde quando visível
+        -- Cor base: vermelho (accent), fica verde quando visível através de parede
         local espColor = accent
 
         if anyESP and isAlive and head then
