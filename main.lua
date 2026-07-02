@@ -244,6 +244,14 @@ local function AddToggle(text, settingKey, targetScroll)
         Status.Text = s and "ON" or "OFF"
         Status.TextColor3 = s and RedzPrimary or OffText
         if settingKey == "CircleVis" then Circle.Visible = s end
+        if settingKey == "Sticky" and not s then
+            -- Remove qualquer inclinação/roll residual da câmera ao desativar o Sticky Aim
+            pcall(function()
+                local p = Camera.CFrame.Position
+                local lookAt = p + Camera.CFrame.LookVector
+                Camera.CFrame = CFrame.new(p, lookAt)
+            end)
+        end
     end)
     return {Label = Label, Status = Status, Active = function() return TixSettings[settingKey] end}
 end
@@ -567,21 +575,59 @@ local isSpinning = false
 local function do360Spin()
     if isSpinning then return end
     isSpinning = true
+
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not (hrp and hum) then isSpinning = false; return end
+
+    -- AlignOrientation gira o personagem sem sobrescrever o CFrame diretamente,
+    -- então não conflita com a física de movimento (WASD continua funcionando)
+    local attachment = Instance.new("Attachment")
+    attachment.Name = "Redz360Attachment"
+    attachment.Parent = hrp
+
+    local align = Instance.new("AlignOrientation")
+    align.Name = "Redz360Align"
+    align.Attachment0 = attachment
+    align.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    align.RigidityEnabled = false
+    align.MaxAngularVelocity = math.huge
+    align.MaxTorque = math.huge
+    align.Responsiveness = 200
+    align.Parent = hrp
+
+    local startYaw = select(2, hrp.CFrame:ToOrientation())
     local degreesRotated = 0
-    local spinConnection
-    spinConnection = RunService.RenderStepped:Connect(function()
-        if TixSettings.Auto360 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = LocalPlayer.Character.HumanoidRootPart
-            local speed = TixSettings.SpinSpeed
-            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(speed), 0)
-            Camera.CFrame = Camera.CFrame * CFrame.Angles(0, math.rad(speed), 0)
-            degreesRotated = degreesRotated + speed
-            if degreesRotated >= 360 then spinConnection:Disconnect(); isSpinning = false end
-        else spinConnection:Disconnect(); isSpinning = false end
+    local conn
+
+    local function cleanup()
+        if conn then conn:Disconnect() end
+        if align then align:Destroy() end
+        if attachment then attachment:Destroy() end
+        isSpinning = false
+    end
+
+    conn = RunService.Heartbeat:Connect(function(dt)
+        if not (TixSettings.Auto360 and hrp.Parent and hum.Parent and hum.Health > 0) then
+            cleanup()
+            return
+        end
+
+        local speed = TixSettings.SpinSpeed * 60 * dt  -- graus por segundo, escalado pelo dt
+        degreesRotated = degreesRotated + speed
+
+        local currentY = startYaw + math.rad(degreesRotated)
+        align.CFrame = CFrame.Angles(0, currentY, 0)
+        Camera.CFrame = Camera.CFrame * CFrame.Angles(0, math.rad(speed), 0)
+
+        if degreesRotated >= 360 then cleanup() end
     end)
 end
 
 LocalPlayer.CharacterAdded:Connect(function(char)
+    -- Garante que qualquer spin antigo pare e não persista entre vidas
+    isSpinning = false
     local hum = char:WaitForChild("Humanoid")
     hum.Jumping:Connect(function(active) if active and TixSettings.Auto360 then do360Spin() end end)
 end)
@@ -651,7 +697,7 @@ RunService.RenderStepped:Connect(function()
     -- LÓGICA DO AIMBOT STICKY
     if TixSettings.Sticky then
         local lock = getClosest()
-        if lock then 
+        if lock then
             local targetCFrame = CFrame.new(Camera.CFrame.Position, lock.Position)
             local lerpFactor = 1 / (1 + (TixSettings.Smoothness - 1) * 0.12)
             Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.clamp(lerpFactor, 0, 1))
@@ -686,27 +732,28 @@ RunService.RenderStepped:Connect(function()
     end
 
     -- SISTEMA DE ESP
-    local targets = {}
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            if TixSettings.ESPTeamCheck then
-                -- nunca mostra o próprio time
-                if p.Team == LocalPlayer.Team then continue end
-                -- se houver times selecionados na gaveta, filtra por eles; vazio = mostra todos os inimigos
-                local hasSelection = next(TixSettings.ESPTeamSelected) ~= nil
-                if hasSelection then
-                    local teamName = p.Team and p.Team.Name or "Sem Time"
-                    if not TixSettings.ESPTeamSelected[teamName] then continue end
-                end
-            end
-            table.insert(targets, p)
-        end
-    end
-
     local anyESP = TixSettings.ESPBox or TixSettings.ESPSkeleton or TixSettings.ESPHealth or TixSettings.ESPName or TixSettings.ESPDistance
 
-    for _, p in pairs(targets) do
-        local char = p.Character
+    if anyESP then
+        local targets = {}
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                if TixSettings.ESPTeamCheck then
+                    -- nunca mostra o próprio time
+                    if p.Team == LocalPlayer.Team then continue end
+                    -- se houver times selecionados na gaveta, filtra por eles; vazio = mostra todos os inimigos
+                    local hasSelection = next(TixSettings.ESPTeamSelected) ~= nil
+                    if hasSelection then
+                        local teamName = p.Team and p.Team.Name or "Sem Time"
+                        if not TixSettings.ESPTeamSelected[teamName] then continue end
+                    end
+                end
+                table.insert(targets, p)
+            end
+        end
+
+        for _, p in pairs(targets) do
+            local char = p.Character
         -- Init visual cache entry
         if not visualCache[char] then
             local entry = { Bones = {} }
@@ -852,6 +899,16 @@ RunService.RenderStepped:Connect(function()
             end
         else
             dt.Visible = false
+        end
+        end
+    else
+        -- Nenhum ESP ativo: esconde tudo que já foi criado, sem custo de raycast/viewport por frame
+        for _, visual in pairs(visualCache) do
+            if visual.High then visual.High.Enabled = false end
+            if visual.Bones then for _, l in pairs(visual.Bones) do l.Visible = false end end
+            if visual.HpBar then visual.HpBar.bg.Visible = false; visual.HpBar.fill.Visible = false end
+            if visual.NameTag then visual.NameTag.Visible = false end
+            if visual.DistTag then visual.DistTag.Visible = false end
         end
     end
 end)
