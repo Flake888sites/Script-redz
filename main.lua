@@ -17,9 +17,7 @@ local TixSettings = {
     ESPName = false,
     ESPDistance = false,
     ESPTeamCheck = false,
-    ESPTeamSelected = {},
-    AimbotTeamCheck = false,
-    AimbotTeamSelected = {},
+    ESPTeamSelected = {},  -- {[teamName]=true, ...} vazio = mostra todos os inimigos
     FOV = 150,
     Smoothness = 1,
     CircleVis = false,
@@ -332,17 +330,15 @@ end
 
 -- ── AIMBOT TAB ──────────────────────────────────────────────
 local indicators = {
-    Sticky   = AddToggle("Sticky Aim",        "Sticky",          ScrollAimbot),
-    Walls    = AddToggle("Wall Check",         "WallCheck",       ScrollAimbot),
-    Teams    = AddToggle("Team Check",         "TeamCheck",       ScrollAimbot),
-    Friends  = AddToggle("Friend Check",       "FriendCheck",     ScrollAimbot),
-    AimTeam  = AddToggle("Aimbot Team Check",  "AimbotTeamCheck", ScrollAimbot),
-    Trickshot= AddToggle("Auto 360 On Jump",   "Auto360",         ScrollAimbot),
-    Trigger  = AddToggle("Trigger Bot",        "Triggerbot",      ScrollAimbot),
-    Optimizer= AddToggle("FPS Otimizador",     "Optimizer",       ScrollAimbot),
-    FOVCircle= AddToggle("Show FOV Circle",    "CircleVis",       ScrollAimbot),
+    Sticky   = AddToggle("Sticky Aim",        "Sticky",      ScrollAimbot),
+    Walls    = AddToggle("Wall Check",         "WallCheck",   ScrollAimbot),
+    Teams    = AddToggle("Team Check",         "TeamCheck",   ScrollAimbot),
+    Friends  = AddToggle("Friend Check",       "FriendCheck", ScrollAimbot),
+    Trickshot= AddToggle("Auto 360 On Jump",   "Auto360",     ScrollAimbot),
+    Trigger  = AddToggle("Trigger Bot",        "Triggerbot",  ScrollAimbot),
+    Optimizer= AddToggle("FPS Otimizador",     "Optimizer",   ScrollAimbot),
+    FOVCircle= AddToggle("Show FOV Circle",    "CircleVis",   ScrollAimbot),
 }
-MakeTeamDrawer(ScrollAimbot, "AimbotTeamSelected", "Times (Aimbot)")
 
 AddSelector("Puxar Em (Target)", "TargetPart", {"Head", "Torso", "HumanoidRootPart"}, ScrollAimbot)
 AddSlider("Tamanho do FOV",       "FOV",        10,  600, 150, ScrollAimbot)
@@ -356,37 +352,40 @@ AddToggle("ESP Health Bar",         "ESPHealth",    ScrollVisual)
 AddToggle("ESP Nome",               "ESPName",      ScrollVisual)
 AddToggle("ESP Distância",          "ESPDistance",  ScrollVisual)
 AddToggle("ESP Team Check",         "ESPTeamCheck", ScrollVisual)
-MakeTeamDrawer(ScrollVisual, "ESPTeamSelected", "Times (ESP)")
 
--- ── GAVETA DE SELEÇÃO DE TIMES (fábrica reutilizável) ────────
-local TeamsService = game:GetService("Teams")
+-- ── GAVETA DE SELEÇÃO DE TIMES ───────────────────────────────
+do
+    local Teams = game:GetService("Teams")
 
-local function MakeTeamDrawer(parentScroll, settingKey, labelText)
     local drawerOpen = false
-    local selectedSetting = TixSettings[settingKey]  -- referência direta à tabela
+    local checkboxRefs = {}  -- [teamName] = {box=Frame, check=TextLabel}
 
-    local twContainer = Instance.new("Frame", parentScroll)
-    twContainer.Size = UDim2.new(1, -5, 0, 42)
+    -- Container externo (botão + gaveta)
+    local twContainer = Instance.new("Frame", ScrollVisual)
+    twContainer.Size = UDim2.new(1, -5, 0, 42)  -- cresce dinamicamente ao abrir
     twContainer.BackgroundColor3 = RedzCardBg
     twContainer.AutomaticSize = Enum.AutomaticSize.Y
+    twContainer.Name = "TeamDrawerContainer"
     Instance.new("UICorner", twContainer)
     local twStroke = Instance.new("UIStroke", twContainer)
     twStroke.Thickness = 1; twStroke.Color = RedzPrimary; twStroke.Transparency = 0.8
+
     local twLayout = Instance.new("UIListLayout", twContainer)
     twLayout.Padding = UDim.new(0, 4)
 
-    -- Botão principal
+    -- Botão principal (abre/fecha a gaveta)
     local twBtn = Instance.new("TextButton", twContainer)
     twBtn.Size = UDim2.new(1, 0, 0, 42)
     twBtn.BackgroundTransparency = 1
-    twBtn.Text = ""; twBtn.AutoButtonColor = false
+    twBtn.Text = ""
+    twBtn.AutoButtonColor = false
     twBtn.LayoutOrder = 1
 
     local twLabel = Instance.new("TextLabel", twBtn)
     twLabel.Size = UDim2.new(1, -60, 1, 0)
     twLabel.Position = UDim2.new(0, 15, 0, 0)
     twLabel.BackgroundTransparency = 1
-    twLabel.Text = labelText
+    twLabel.Text = "Selecionar Times"
     twLabel.Font = Enum.Font.GothamBold
     twLabel.TextColor3 = RedzPrimary
     twLabel.TextSize = 14
@@ -396,10 +395,12 @@ local function MakeTeamDrawer(parentScroll, settingKey, labelText)
     twArrow.Size = UDim2.new(0, 30, 1, 0)
     twArrow.Position = UDim2.new(1, -38, 0, 0)
     twArrow.BackgroundTransparency = 1
-    twArrow.Text = "▾"; twArrow.Font = Enum.Font.GothamBold
-    twArrow.TextColor3 = RedzPrimary; twArrow.TextSize = 16
+    twArrow.Text = "▾"
+    twArrow.Font = Enum.Font.GothamBold
+    twArrow.TextColor3 = RedzPrimary
+    twArrow.TextSize = 16
 
-    -- Gaveta
+    -- Frame da gaveta (lista de times)
     local twDrawer = Instance.new("Frame", twContainer)
     twDrawer.Size = UDim2.new(1, -16, 0, 0)
     twDrawer.Position = UDim2.new(0, 8, 0, 0)
@@ -410,54 +411,48 @@ local function MakeTeamDrawer(parentScroll, settingKey, labelText)
     local twDrawerLayout = Instance.new("UIListLayout", twDrawer)
     twDrawerLayout.Padding = UDim.new(0, 4)
 
-    -- Label de "nenhum time" — criada UMA vez, só alterna Visible
-    local emptyLbl = Instance.new("TextLabel", twDrawer)
-    emptyLbl.Size = UDim2.new(1, 0, 0, 28)
-    emptyLbl.BackgroundTransparency = 1
-    emptyLbl.Text = "Nenhum time encontrado neste jogo"
-    emptyLbl.Font = Enum.Font.Gotham
-    emptyLbl.TextColor3 = OffText
-    emptyLbl.TextSize = 12
-    emptyLbl.Visible = false
-
-    local rowPool = {}  -- reutiliza rows ao invés de recriar
+    local function clearDrawer()
+        for _, child in pairs(twDrawer:GetChildren()) do
+            if child:IsA("Frame") or child:IsA("TextButton") then child:Destroy() end
+        end
+        checkboxRefs = {}
+    end
 
     local function rebuildDrawer()
-        -- Esconde todos os rows existentes primeiro
-        for _, row in pairs(rowPool) do row.frame.Visible = false end
+        clearDrawer()
+        local teamList = Teams:GetTeams()
 
-        local teamList = TeamsService:GetTeams()
-        local enemyTeams = {}
-        for _, t in ipairs(teamList) do
-            if t ~= LocalPlayer.Team then
-                table.insert(enemyTeams, t)
-            end
-        end
-
-        if #enemyTeams == 0 then
-            emptyLbl.Visible = true
+        if #teamList == 0 then
+            local emptyLbl = Instance.new("TextLabel", twDrawer)
+            emptyLbl.Size = UDim2.new(1, 0, 0, 28)
+            emptyLbl.BackgroundTransparency = 1
+            emptyLbl.Text = "Nenhum time encontrado neste jogo"
+            emptyLbl.Font = Enum.Font.Gotham
+            emptyLbl.TextColor3 = OffText
+            emptyLbl.TextSize = 12
             return
         end
-        emptyLbl.Visible = false
 
-        for i, team in ipairs(enemyTeams) do
-            -- Reutiliza row do pool se existir, senão cria
-            if not rowPool[i] then
+        for _, team in ipairs(teamList) do
+            if team ~= LocalPlayer.Team then
                 local row = Instance.new("TextButton", twDrawer)
                 row.Size = UDim2.new(1, 0, 0, 32)
                 row.BackgroundColor3 = Color3.fromRGB(30, 8, 8)
-                row.AutoButtonColor = false; row.Text = ""
+                row.AutoButtonColor = false
+                row.Text = ""
                 Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
 
                 local swatch = Instance.new("Frame", row)
                 swatch.Size = UDim2.new(0, 14, 0, 14)
                 swatch.Position = UDim2.new(0, 10, 0.5, -7)
+                swatch.BackgroundColor3 = team.TeamColor.Color
                 Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 3)
 
                 local nameLbl = Instance.new("TextLabel", row)
                 nameLbl.Size = UDim2.new(1, -70, 1, 0)
                 nameLbl.Position = UDim2.new(0, 32, 0, 0)
                 nameLbl.BackgroundTransparency = 1
+                nameLbl.Text = team.Name
                 nameLbl.Font = Enum.Font.GothamBold
                 nameLbl.TextColor3 = RedzPrimary
                 nameLbl.TextSize = 13
@@ -474,35 +469,30 @@ local function MakeTeamDrawer(parentScroll, settingKey, labelText)
                 local checkMark = Instance.new("TextLabel", checkBox)
                 checkMark.Size = UDim2.new(1, 0, 1, 0)
                 checkMark.BackgroundTransparency = 1
-                checkMark.Text = "✓"; checkMark.Font = Enum.Font.GothamBold
-                checkMark.TextSize = 13; checkMark.TextColor3 = RedzPrimary
+                checkMark.Text = "✓"
+                checkMark.Font = Enum.Font.GothamBold
+                checkMark.TextSize = 13
+                checkMark.TextColor3 = RedzPrimary
+                checkMark.Visible = TixSettings.ESPTeamSelected[team.Name] == true
 
-                rowPool[i] = {frame=row, swatch=swatch, nameLbl=nameLbl, checkBox=checkBox, checkMark=checkMark}
+                checkboxRefs[team.Name] = {box = checkBox, mark = checkMark}
+
+                row.MouseButton1Click:Connect(function()
+                    local cur = TixSettings.ESPTeamSelected[team.Name]
+                    TixSettings.ESPTeamSelected[team.Name] = not cur
+                    checkMark.Visible = not cur
+                    checkBox.BackgroundColor3 = (not cur) and Color3.fromRGB(60, 5, 5) or Color3.fromRGB(40, 10, 10)
+                end)
+
+                checkBox.BackgroundColor3 = TixSettings.ESPTeamSelected[team.Name] and Color3.fromRGB(60, 5, 5) or Color3.fromRGB(40, 10, 10)
             end
-
-            local r = rowPool[i]
-            r.frame.Visible = true
-            r.swatch.BackgroundColor3 = team.TeamColor.Color
-            r.nameLbl.Text = team.Name
-
-            local isSelected = TixSettings[settingKey][team.Name] == true
-            r.checkMark.Visible = isSelected
-            r.checkBox.BackgroundColor3 = isSelected and Color3.fromRGB(60, 5, 5) or Color3.fromRGB(40, 10, 10)
-
-            -- Reconecta o click ao time correto desta iteração
-            r.frame.MouseButton1Click:Connect(function()
-                local cur = TixSettings[settingKey][team.Name]
-                TixSettings[settingKey][team.Name] = not cur
-                r.checkMark.Visible = not cur
-                r.checkBox.BackgroundColor3 = (not cur) and Color3.fromRGB(60, 5, 5) or Color3.fromRGB(40, 10, 10)
-            end)
         end
     end
 
     twBtn.MouseButton1Click:Connect(function()
         drawerOpen = not drawerOpen
         if drawerOpen then
-            rebuildDrawer()
+            rebuildDrawer()  -- atualiza a lista de times toda vez que abre
             twDrawer.Visible = true
             twArrow.Text = "▴"
         else
@@ -670,15 +660,6 @@ local function getClosest()
         if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
             if TixSettings.TeamCheck and v.Team == LocalPlayer.Team then continue end
             if TixSettings.FriendCheck and isFriend(v) then continue end
-            -- Aimbot Team Check: filtra por time
-            if TixSettings.AimbotTeamCheck then
-                if v.Team == LocalPlayer.Team then continue end
-                local hasSelection = next(TixSettings.AimbotTeamSelected) ~= nil
-                if hasSelection then
-                    local teamName = v.Team and v.Team.Name or "Sem Time"
-                    if not TixSettings.AimbotTeamSelected[teamName] then continue end
-                end
-            end
             local selectedPart = getChosenPart(v.Character)
             if selectedPart then table.insert(potentials, selectedPart) end
         end
